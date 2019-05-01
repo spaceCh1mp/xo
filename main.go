@@ -19,9 +19,9 @@ var (
 		{3, 6, 9},
 		{4, 5, 6},
 		{7, 8, 9}}
-	turn int
-	win  bool = false
-	stat string
+	turn, count, total int
+	win                bool = false
+	stat               string
 )
 
 type Game struct {
@@ -40,9 +40,9 @@ type Info struct {
 
 func main() {
 	//set game premise. size, player 1 and 2
-	size := flag.Int("Size", 3, "Board is an mxm matrix where m=3 by default")
-	player1 := flag.String("Player 1", "X", "Player 1 is X by default")
-	player2 := flag.String("Player 2", "O", "Player 2 is O by default")
+	size := flag.Int("size", 3, "Board is an mxm matrix where m=3 by default")
+	player1 := flag.String("player1", "X", "Player 1 is X by default")
+	player2 := flag.String("player2", "O", "Player 2 is O by default")
 	flag.Parse()
 	//initialise and register players
 	players := []string{*player1, *player2}
@@ -52,10 +52,9 @@ func main() {
 	g.startGame(p, *size)
 }
 func initPiece(p []string) Piece {
-	var a string = "human"
+	a := "human"
 	var player Piece
-	player.piece = make(map[int]string)
-	player.player = make(map[string]Info)
+	player.piece, player.player = make(map[int]string), make(map[string]Info)
 	for index, value := range p {
 		player.piece[index] = value
 		player.player[value] = Info{agent: a}
@@ -64,26 +63,24 @@ func initPiece(p []string) Piece {
 }
 func (g Game) startGame(pl Piece, size int) {
 	g.setBoard(size)
-	var count int = 0
-	turn = 0
+	count, turn = 0, 0
 	//total number of moves is (mxm)
-	total := int(math.Exp2(float64(size)))
+	total = int(math.Exp2(float64(size)))
 	for {
-		fmt.Println(count)
 		//display board markup and game board side by side
 		displayBoard(g)
 		//prompt user for input
 		pl.play(turn, g)
-		//update player moveset
 		//check for win
+		playerMoves := pl.player[pl.piece[turn]].moveSet
 		for _, sub := range wins {
-			win = CheckWin(pl.player[pl.piece[turn]].moveSet, sub)
+			win = CheckWin(playerMoves, sub)
 			if win {
-				//announce winner
 				stat = "W"
 			}
 		}
 		//if no win and board is full call draw
+		log.Println(count, ":", total)
 		if count == total && !win {
 			stat = "D"
 		}
@@ -106,12 +103,26 @@ func (p *Piece) play(t int, g Game) {
 	//update player set
 	var move int
 	pl := p.piece[t]
-	fmt.Printf("Player %d:\nSelect where to place your piece \"%s\" :-", turn+1, pl)
-	_, err := fmt.Scanf("%d", &move)
-	if err != nil {
-
+	fmt.Printf("Player %d:\n", turn+1)
+	for {
+		fmt.Printf("Select where to place your piece \"%s\" :- ", pl)
+		_, err := fmt.Scan(&move)
+		if err != nil {
+			fmt.Println("Wrong input, try again.")
+		} else {
+			if move < 1 || move > total+1 {
+				fmt.Println("Position doesn't exist on board")
+			} else {
+				if g.protected[move-1] == move {
+					fmt.Println("Position on the board is already occupied.")
+				} else {
+					break
+				}
+			}
+		}
 	}
-	p.player[pl] = Info{moveSet: append(p.player[pl].moveSet, move)}
+	temp := p.player[pl].moveSet
+	p.player[pl] = Info{moveSet: append(temp, move)}
 	g.updateBoard(pl, move)
 }
 
@@ -124,36 +135,33 @@ func (g *Game) setBoard(size int) {
 	g.board = make([][]string, size)
 	g.protected = make([]int, int(math.Exp2(float64(size)))+1)
 	g.size = size
-	for i := range g.board {
-		g.board[i] = make([]string, size)
-		for index := range g.board[i] {
-			g.board[i][index] = "*"
+	for in := range g.board {
+		g.board[in] = make([]string, size)
+		for index := range g.board[in] {
+			g.board[in][index] = "*"
 		}
 	}
 }
-func findCoordinates(j, matrixSize int) (int, int) {
-	x, y := int(math.Ceil(float64(j)/float64(matrixSize))-1), 2
-	c := 0
+func findCoordinates(value, matrixSize int) (int, int) {
+	x, y, initialValue := int(math.Ceil(float64(value)/float64(matrixSize))-1), matrixSize-1, value
 	for {
-		if j%matrixSize == 0 {
-			y -= c
+		if value%matrixSize == 0 {
+			y -= (value - initialValue)
 			break
 		} else {
-			j++
-			c++
+			value++
 		}
 	}
-	log.Println(x, ":", y)
 	return x, y
 }
 func CheckWin(super, sub []int) bool {
-	super = sort.IntSlice(super)
-	sub = sort.IntSlice(sub)
-	var check int = 0
+	super, sub = sort.IntSlice(super), sort.IntSlice(sub)
+	check := 0
 	for _, value := range super {
 		for _, val := range sub {
 			if val == value {
 				check += 1
+				continue
 			}
 		}
 		if check == len(sub) {
@@ -173,31 +181,29 @@ func findTurn(t int) int {
 		return 0
 	}
 }
-func displayBoard(board Game) {
-	b := board.board
-	s := len(b) - 1
-	st := ""
+func displayBoard(b Game) {
+	board := b.board
+	matrixEdge, boardUI, layout := len(board)-1, "", ""
 	divider := fmt.Sprintf("\t\t-----------\n")
-	str := `
-		 1 | 2 | 3	
-		 ---------
-		 4 | 5 | 6
-		 ---------
-		 7 | 8 | 9
-	`
-	for index := range b {
-		for i, value := range b[index] {
-			if i == s {
-				st += fmt.Sprintf(" %s \n", value)
+	l := 1
+	for index := range board {
+		for i, value := range board[index] {
+			if i == matrixEdge {
+				boardUI += fmt.Sprintf(" %s \n", value)
+				layout += fmt.Sprintf(" %d \n", l)
 			} else if i == 0 {
-				st += fmt.Sprintf("\t\t %s |", value)
+				boardUI += fmt.Sprintf("\t\t %s |", value)
+				layout += fmt.Sprintf("\t\t %d |", l)
 			} else {
-				st += fmt.Sprintf(" %s |", value)
+				boardUI += fmt.Sprintf(" %s |", value)
+				layout += fmt.Sprintf(" %d |", l)
 			}
+			l++
 		}
-		if index != 2 {
-			st += divider
+		if index != matrixEdge {
+			boardUI += divider
+			layout += divider
 		}
 	}
-	fmt.Printf("%s\n%s", str, st)
+	fmt.Printf("%s\n%s", layout, boardUI)
 }
